@@ -1,0 +1,592 @@
+---
+title: "DATA 603 Project Report - Diamonds MLR"
+author: "Szabolcs Szokoly, Ali Bagheri, Frederick Li, Nabeel Mahamood"
+output:
+  html_document:
+    df_print: paged
+df_print: paged
+---
+
+```{r setup, include=FALSE, warn.conflicts = FALSE, cache = F}
+knitr::opts_chunk$set(echo = TRUE)
+library("dplyr")
+library("ggplot2")
+library("ggcorrplot")
+library("tidyverse")
+library("mosaic")
+library("mdsr")
+library("purrr")
+library("mctest")
+library("lmtest")
+library("car")
+library("DT")
+library("olsrr")
+library("leaps")
+library("GGally")
+library("Matrix")
+library("igraph")
+library("ISLR")
+library("ROCR") 
+library("pROC")
+library("aod")
+library("lmtest")
+library("agricolae")
+#library("flexdashboard")
+library("knitr")
+library("pedometrics")
+options(scipen=999)
+```
+
+### INTRODUCTION
+
+In this study, we will be performing a statistical analysis on the physical attributes of diamonds, in order to determine their effect on the price of diamonds. The research questions we will attempt to answer include:</b>
+
+1. How are physical attributes of diamonds, such as carat (weight), cut, and colour correlated to the value of that diamond?</b>
+
+2. What method of regression provides the best fit model of diamond price to its physical attributes?</b>
+
+We expect that a higher carat, better quality of cut, color and clarity, and larger size will mean an increase in value, but the exact nature of the relationships between these attributes and price is what this study aims to uncover.
+
+#### TOPIC
+
+Diamonds are one of the best-known and most sought-after gemstones, highly desired for their decorative value since early recorded history. Today, several professionals and organizations grade and certify diamonds based on their physical qualities, and assess their value accordingly. As such, it is important to know how to accurately judge a diamond's value by its color, cut, clarity, and carat (The four C's) in order to keep up with the market of this valuable commodity.</b>
+
+#### DESCRIPTION OF DATA AND RESEARCH VARIABLES
+
+The dataset used in this statistical study was retrieved from Kaggle, found at the following link:</b>
+
+https://www.kaggle.com/shivam2503/diamonds </b>
+
+The data is in a .csv format, containing data for about 54,000 diamonds. There are 11 columns, 1 of which is the numerical index of the diamond and the other 10 are the physical quality of the diamond. The qualitative attributes of the diamond include the cut, color, and clarity.</b>
+
+- The cut column lists the quality of the diamond facet cuts, in ascending order of quality: Fair, Good, Very Good, Premium, Ideal. The cut of the diamond refers to the style or design of the facets, which affect the diamonds luminance and brilliance. A diamond that is poorly cut will be less luminous, and thus less valuable.</b>
+
+- The color column lists the color of the diamond, ranging from J (worst) to D (best). In general, color is undesirable, and colorless diamonds are more valuable.</b>
+
+- The clarity column lists the measurement of how clear the diamond is. In ascending order of quality, the clarity measurements are: I1, SI2, SI1, VS2, VS1, VVS2, VVS1, IF. The clearer a diamond is, the higher its value will be.</b>
+
+- The qualitative attributes of the diamonds include carat, table, x, y, z, table and price.</b>
+
+- The carat column lists the weight of each diamond, in carats (1 carat = 0.2 grams).</b>
+
+- The table column lists the table measurement of each diamond. The table is the ratio of the width of the top (upper flat facet) of the diamond to its widest point, expressed as a percentage.</b>
+
+- The x, y and z columns are the dimensions of the diamond, being length, width and height respectively (mm).</b>
+
+- The depth column lists the depth percentage of the diamond. The depth percentage is the ratio of the distance from the table (top) to the cutlet (pointed tip opposite of the table). The depth percentage is obtained from the formula:</b>
+
+z / mean(x, y) = 2 * z / (x + y)</b>
+
+- The price column lists the price of the diamond in USD.</b>
+
+#### MODELING
+
+In order to develop a model for the data, we will need to first check the dataset and perform any necessary cleanup. Once this is finished, we will evaluate whether there is collinearity between certain quantitative variables. It is highly likely that carat will be multicollinear with the dimensions x, y and z, so we will use a Pearson Correlation Table to evaluate multicollinearity between these variables.</b>
+
+Once we start modeling proper, there are certain assumptions that need to be checked in order for the modeling work to be taken as valid. The most important of these assumptions are that the residuals of the first order model are normally distributed and homoscedastic, and that there is a linear correlation between the dependent variable (price) and the independent variables. The normality of the residual distribution will be checked using a normal Q-Q plot for each step of modeling (first order, interaction, higher order, log transformation)</b>
+
+We will start by building a first order model, checking the assumptions mentioned above. After this, we will evaluate possible interaction terms and higher order terms, again ensuring that the assumptions above hold while we do so.</b>
+
+### ANALYSIS RESULTS
+
+#### Importing the CSV file
+
+```{r read_csv, echo=FALSE}
+diamonds <- read.csv("diamonds.csv")
+head(diamonds)
+```
+
+#### Refactoring categorical variables
+
+We do refactoring here because the weight(Carat) do not follow the true order of these categories (Color, Cut and Clarity), they follow alphabetical order.
+</b>
+```{r refactor_factor_variables, echo=FALSE}
+diamonds$clarity <- factor(diamonds$clarity, levels = c('I1', 'SI2', 'SI1', 'VS2', 'VS1', 'VVS2', 'VVS1', 'IF'))
+diamonds$color <- factor(diamonds$color, levels = c('J', 'I', 'H', 'G', 'F', 'E', 'D'))
+diamonds$cut <- factor(diamonds$cut, levels = c('Fair', 'Good', 'Very Good', 'Premium', 'Ideal'))
+```
+
+#### Reviewing the values of the dataset
+
+Now let's take a look at the dateset.
+</b>
+```{r, echo=FALSE}
+summary(diamonds)
+```
+</b>
+```{r glimpse, echo=FALSE}
+glimpse(diamonds)
+```
+</b>
+
+#### Checking for missing values
+
+Which, does not have any meaningful or related values.
+</b>
+```{r check_na, echo=FALSE}
+na <- colSums(is.na(diamonds))
+na
+```
+</b>
+It seems we all good!
+
+#### Dropping column "X"
+
+This column as we see just shows the number of rows so we don't need it here.
+</b>
+```{r drop_X, echo=FALSE}
+diamonds <- subset(diamonds, select = -c(X))
+head(diamonds)
+```
+
+#### Creating Pearson Correlation graph
+
+First, we need to know if there are any linear relations between our independent variables or not. Therefore we plot the correlation graph.
+</b>
+```{r ggcorrplot, echo=FALSE}
+plot_pearson <- ggcorrplot(cor(diamonds %>% 
+                 mutate_if(function(x) is.factor(x), function(x) as.numeric(x))), 
+                 type = 'lower', outline.col = 'white', lab = TRUE, title = 'Pearson Correlation Coefficients')
+print(plot_pearson)
+```
+</b>
+From the above table, we can see high correlations between x,y,z and also between them and variable carat.
+
+#### Creating GGpair to observe Multicollinearity 
+
+To confirm that we have Multicollinearity between 'x', 'y', 'z', and Carat, we create a GGpair plot here without considering 'cut', 'color', 'clarity', 'table', and 'depth'.
+</b>
+```{r plot_multicoll, echo=FALSE}
+plot_multicoll <- ggpairs(diamonds %>% 
+                      select (-cut, -color, -clarity, -table, -depth), 
+                      lower = list(continuous = wrap("smooth", alpha = 0.3, size = 0.1), 
+                                     discrete = "blank", 
+                                        combo = "blank"), 
+                       diag = list(continuous = wrap("densityDiag", alpha = 0.5),
+                                     discrete = "barDiag"),
+                      upper = list(continuous = wrap("cor", size = 4, alignPercent = 0.8),
+                                        combo = wrap("box_no_facet", alpha = 0.5)),
+                      progress = FALSE) +
+                      theme(panel.grid.major = element_blank())
+print(plot_multicoll)
+```
+</b>
+As the result shows, the relationship between these four variables is linear, so we should eliminate x,y, and z from our model.
+
+#### Using variance inflation factor (VIF)
+
+To confirm our result from GGpair plot, we also can use VIF to find correlations between our independent variables.
+</b>
+```{r vif-predictors, echo=FALSE}
+### VIF
+X <- cbind(diamonds$carat,   # V1
+           diamonds$cut,     # V2
+           diamonds$color,   # V3
+           diamonds$clarity, # V4
+           diamonds$depth,   # V5
+           diamonds$table,   # V6
+           diamonds$x,       # V7
+           diamonds$y,       # V8
+           diamonds$z)       # V9
+imcdiag(X, diamonds$price, method = "VIF", corr = FALSE)
+```
+</b>
+The results clearly confirm what we got from the GGpait plot. It means we need to eliminate x,y, and z from our model.
+
+#### Fitting First-Order model
+
+Our first order model will include carat, cut, color, clarity, depth, and table. Here we run the individual t-test to see which one of the predictors are significant and which one we should eliminate from our model.
+</b>
+```{r firstordermodel, echo=FALSE}
+firstordermodel <- lm(price ~ carat + factor(cut) + factor(color) + factor(clarity) + depth + table, data = diamonds)
+summary(firstordermodel)
+```
+</b>
+The t-test results show that the p-value for all variables is below 0.05 so all of them are significant.
+
+#### Running Backward Elimination Method
+
+To make sure about our results for the first-order model, we also run one of the stepwise regression methods. </b>
+```{r}
+backmodel <- ols_step_backward_p(firstordermodel, prem = 0.3, details = TRUE)
+```
+</b>
+Again, we can see that the stepwise method also confirmed our t-test result and all the predictors are significant at alpha=0.05.
+
+#### Fitting Full Interaction model
+
+Now, we are going to figure out if there are any meaningful interaction between predictors.
+</b>
+```{r intermodel, echo=FALSE}
+intermodel <- lm(price ~ (carat + factor(cut) + factor(color) + factor(clarity) + depth + table)^2, data = diamonds)
+summary(intermodel)
+```
+</b>
+The results show the only interaction we should eliminate is depth*table because the p-value for it is 0.296877<0.05. In all other interactions, we can find significance.
+
+#### Fitting Reduced Interaction model without depth*table term
+
+So, from last part, we drop depth*table and create the reduced interaction model here.
+</b>
+```{r reducedintermodel, echo=FALSE}
+reducedintermodel <- lm(price ~ carat + factor(cut) + factor(color) + factor(clarity) + depth + table + carat*factor(cut) + carat*factor(color) + carat*factor(clarity) + carat*depth + carat*table + factor(cut)*factor(color) + factor(cut)*factor(clarity) + factor(cut)*depth + factor(cut)*table + factor(color)*factor(clarity) + factor(color)*depth + factor(color)*table + factor(clarity)*depth + factor(clarity)*table, data = diamonds)
+summary(reducedintermodel)
+```
+</b>
+So, until this point, our final model is the reduced interaction model.
+
+### Assumptions
+
+Now that we have a model that we think might be a proper model to predict the diamonds price, we can go to the next step and test the model against the below assumptions to see if the model needs more improvement or not.</b>
+
+ - There is a linear relationship between the predictors and the response. </b>
+ - Multicollinearity is not present, predictors are not too highly correlated with each other.</b>
+    (We did this test at the first step and removed x,y, and z from our predictors).</b>
+ - Heteroscedasticity is not present, or there are constant variances in the errors.</b>
+ - Residuals are Normally distributed, N(0,1).</b>
+ 
+*We tried to do Shapiro-Wilk test but our dataset has more than 5000 points that's why we can not apply this test to check for normality.
+
+#### Plotting to check for linearity and Homoscedasticity
+
+First-Order model;</b>
+To better be able to compare what we've achieved till now, first we plot between fitted value and standardized residuals for the first-order model.
+</b>
+```{r plot_residual_firstorder , echo=FALSE, warn.conflicts = FALSE}
+plot_residual_firstorder <- ggplot(firstordermodel, aes(x=.fitted, y=.resid)) +
+                              geom_point(size = 0.5) +
+                              geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+                              geom_hline(yintercept = 0)
+print(plot_residual_firstorder)
+```
+</b>
+We can clearly see that the first-order model fails the linearity test. We also can see the funnel shape which indicates heteroscedasticity.
+
+#### Test for Homoscedasticity
+
+To confirm the heteroscedasticity, we can use Breusch-Pagan test here on our first-order model as well.
+</b>
+```{r}
+bptest(firstordermodel)
+```
+
+The output displays the Breusch-Pagan test result for the first-order model. The p-value <0.05, indicating that we do reject the null hypothesis. Which means, the test provides evidence to suggest that heteroscedasticity does exist.
+
+#### Plotting to check for linearity and Homoscedasticity
+
+Now we perform the same tests on our Reduced Iteraction model. First checking linearity;
+
+```{r plot_residual_fitted_reducedinter, echo=FALSE}
+plot_residual_fitted_reducedinter <- ggplot(reducedintermodel, aes(x=.fitted, y=.resid)) +
+                                        geom_point(size = 0.5) + 
+                                        geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+                                        geom_hline(yintercept = 0) 
+print(plot_residual_fitted_reducedinter)
+```
+</b>
+In terms of linearity, as the plot shows, this model performs better than the first-order model, but still needs improvement. We also still can see the funnel shape which indicates heteroscedasticity.
+
+#### Test for Homoscedasticity
+
+To confirm the heteroscedasticity, we use Breusch-Pagan test here on the reduced interaction model as well.
+</b>
+```{r}
+bptest(reducedintermodel)
+```
+</b>
+The Breusch-Pagan test result for the reduced-interaction model. The p-value <0.05, indicating that we do reject the null hypothesis. This means, also in the interaction model, we have heteroscedasticity.
+
+#### Plotting to check for possible high order terms 
+
+So, by far, per the result of linearity and Homoscedasticity tests, none of the models are proper enough for prediction. Thus we go further and try high-order terms.
+</b>
+```{r plot_mainpredictors, echo=FALSE}
+plot_mainpredictors <- ggpairs(diamonds %>% 
+                  select (-x, -y, -z), 
+                  lower = list(continuous = wrap("smooth", alpha = 0.3, size = 0.1), 
+                                 discrete = "blank", combo = "blank"), 
+                   diag = list(continuous = wrap("densityDiag", alpha = 0.5), 
+                                 discrete = "barDiag"),
+                  upper = list(continuous = wrap("cor", size = 4, alignPercent = 0.8),
+                                    combo = wrap("box_no_facet", alpha=0.5)),
+                  progress = FALSE) +
+                  theme(panel.grid.major = element_blank())
+print(plot_mainpredictors)
+```
+</b>
+As the plot displays, we may have a polynomial relation between price and carat. So we go ahead and check it in the next step.
+
+#### Fitting polynomial (high-order) model for `carat`
+
+```{r fullmodel, echo=FALSE}
+polyreducedintermodel <- lm(price ~ poly(carat, 13, raw=TRUE) + factor(cut) + factor(color) + factor(clarity) + depth + table + carat*factor(cut) + carat*factor(color) + carat*factor(clarity) + carat*depth + carat*table + factor(cut)*factor(color) + factor(cut)*factor(clarity) + factor(cut)*depth + factor(cut)*table + factor(color)*factor(clarity) + factor(color)*depth + factor(color)*table + factor(clarity)*depth + factor(clarity)*table, data = diamonds)
+summary(polyreducedintermodel)
+```
+</b>
+By adding high-order terms for carat to the reduced-interaction model and making poly-reduced-intermodel, we get the Adjusted R-squared: 0.9723 which is the best so far. Also, all the polynomials are significant.
+
+#### Check again for linearity and homoscedasticity in High-Order Interaction model
+
+Now we test our new model to see how good it is!
+</b>
+```{r ggplot_residual_reducedinter, echo=FALSE}
+plot_residual_polyreducedintermodel <- ggplot(polyreducedintermodel, aes(x=.fitted, y=.resid)) +
+                                          geom_point(size = 0.5) +
+                                          geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+                                          geom_hline(yintercept = 0) 
+print(plot_residual_polyreducedintermodel)
+```
+</b>
+This result looks much better than the previous models in terms of linearity, But still, the funnel shape from left to the right is visible and Heteroscedasticity exists.
+</b>
+Let's also check homoscedasticity for the poly-reduced-interaction model though Breusch-Pagan test;
+</b>
+```{r}
+bptest(polyreducedintermodel)
+```
+</b>
+The result confirms in terms of homoscedasticity, we still have got the problem and Heteroscedasticity exists.
+
+#### Plotting Histogram to check for normality
+
+Before going any further, for our last model (poly-reduced-intermodel), Let's check the normality assumption.
+</b>
+```{r plot_hist_normality, echo=FALSE}
+plot_hist_normality <- qplot(residuals(polyreducedintermodel),
+                              geom="histogram",
+                              binwidth = 200,  
+                              main = "Histogram of residuals", 
+                              xlab = "residuals", color="red", 
+                              fill=I("blue"))
+print(plot_hist_normality)
+```
+</b>
+The histogram looks normal. Now checking QQ plot.
+
+#### Plotting QQ to check for normality
+
+```{r plot_qq_normality, echo=FALSE}
+plot_qq_normality <- ggplot(diamonds, aes(sample = polyreducedintermodel$residuals)) +
+                       stat_qq(size = 0.5) +
+                       stat_qq_line(color = 'blue')
+print(plot_qq_normality)
+```
+</b>
+Unfortunately it does not look good enough! It means, The output shows that the residual data have not Normaly distributed.
+
+### Taking A New Approach, Log Transformation
+
+A bow-shaped pattern of deviations in our QQ-Plot indicates that the residuals have excessive skewness
+using our last `polyreducedintermodel` model. In addition not only our Normality assumption is not 
+satisfied the GGplot of fitted vs. residuals clearly shows an unequal scatter of residuals forming a 
+funnel shaped distribution suggesting heteroscedasticity. For this reason we are going to log transform 
+our response and quantitative predictor variables to improve our model.</b>
+
+#### Log Transforming Diamonds
+
+Here, we start transforming all the models we got from beginning to the Log model to see which one can satisfy the assumptions as of the best-fitted model.
+First we transform the response (Price) and quantitative predictors (Carat, Table, and Depth);
+</b>
+```{r diamonds_log, echo=FALSE}
+diamonds_log <- diamonds %>% 
+  mutate(price = log(diamonds$price), 
+         carat = log(diamonds$carat), 
+         table = log(diamonds$table),
+         depth = log(diamonds$depth))
+head(diamonds_log)
+```
+
+#### Fitting Log transformed First-Order model
+
+```{r firstorderlog, echo=FALSE}
+firstorderlog <- lm(price ~ carat + factor(cut) + factor(color) + factor(clarity) + depth + table, data = diamonds_log)
+summary(firstorderlog)
+```
+</b>
+depth and table variables are not significant (p-value<0.05) so we remove them from first order log model.
+
+#### Fitting Log transformed Reduced First-Order model without `depth` and `table`
+
+```{r reducedlog, echo=FALSE}
+reducedlog <- lm(price ~ carat + factor(cut) + factor(color) + factor(clarity), data = diamonds_log)
+summary(reducedlog)
+```
+
+#### Fitting Log transformed Full Interaction model
+
+The depth variable had the p-value of 0.116 in the first-order model, that's why we eliminated it from the reduced model but since we might get a proper react in the interaction model from it (its p-value is not too far from 0.1), we are going to add it here and check the results.
+</b>
+```{r interlog, echo=FALSE}
+interlog <- lm(price ~ (carat + depth + factor(cut) + factor(color) + factor(clarity))^2, data = diamonds_log)
+summary(interlog)       
+```
+</b>
+As we see, it is proper to have the depth predictor in the interaction model, it gives us many significant terms in interaction with other variables. Also accourding to p-values there is no variable that we can drop from the log interaction model.
+
+#### Plotting Histogram and QQ to check for normality
+
+Let's check for Normality assumption for the log-interaction model;
+</b>
+```{r}
+plot_hist_normality <- qplot(residuals(interlog),
+                              geom="histogram",
+                              binwidth = 0.02,  
+                              main = "Histogram of residuals", 
+                              xlab = "residuals", color="red", 
+                              fill=I("orange"))
+print(plot_hist_normality)
+```
+</b>
+The histogram shows that the residuals are almost normaly distributed.
+</b>
+
+```{r, plot_interlog, echo=FALSE}
+plot_interlog <- ggplot(diamonds_log, aes(sample=interlog$residuals)) +
+                            stat_qq(size = 0.5) +
+                            stat_qq_line(color = 'blue')
+print(plot_interlog)
+```
+</b>
+We definitely can observe a lot of improvement form the poly-interaction model to this log-interaction model. Other than some points at the both ends, the data points are almost laid on the line which shows it is close to a normal distribution.
+
+#### Plotting to check for linearity and homoscedasticity using the log-interaction model
+
+```{r ggplot_residual_interlog, echo=FALSE}
+plot_residual_interlog <- ggplot(interlog, aes(x=.fitted, y=.resid)) +
+                            geom_point(size = 0.5) +
+                            geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+                            geom_hline(yintercept = 0) 
+print(plot_residual_interlog)
+```
+</b>
+We have another improvment here! No funnel observed this time. The residuals tend to form a horizontal band, indicates that the plot does not provide evidence to suggest that heteroscedasticity exists. Also the blue line has a pretty good strech over the horizental line which shows the linearity.
+
+
+#### Plotting to check for possible high order terms
+
+```{r plot_mainpredictorslog, echo=FALSE, warn.conflicts = FALSE}
+plot_mainpredictorslog <- ggpairs(diamonds_log %>% 
+                  select (-x, -y, -z, -table), 
+                  lower = list(continuous = wrap("smooth", alpha = 0.3, size = 0.1), 
+                                 discrete = "blank", combo = "blank"), 
+                   diag = list(continuous = wrap("densityDiag", alpha = 0.5), 
+                                 discrete = "barDiag"),
+                  upper = list(continuous = wrap("cor", size = 4, alignPercent = 0.8), 
+                                    combo = wrap("box_no_facet", alpha = 0.5)),
+                  progress = FALSE) + 
+                  theme(panel.grid.major = element_blank())
+print(plot_mainpredictorslog)
+```
+</b>
+And here, we can not see any curve between depth and carat with the price. This confirms that there is no need to go for a higher-terms model within the log.
+
+#### Printing Outliers using the latest model for the log transformed data
+
+No let's see if we can find any outliers in our dataset;
+
+```{r outlierslog, echo=FALSE}
+outlierslog <- diamonds_log[cooks.distance(interlog)>0.5,]
+print(outlierslog)
+```
+</b>
+None! good then :)
+</b>
+
+#### Prediction
+
+Let's do some predections based on our final model here;
+
+```{r}
+carat1.00 = data.frame(carat=log(1.00), color="G", clarity="SI1", cut="Ideal", table=log(56), depth=log(62.7))
+carat1.01 = data.frame(carat=log(1.01), color="G", clarity="SI1", cut="Ideal", table=log(56), depth=log(62.7))
+r1 = predict(interlog, carat1.00, type="response")
+r2 = predict(interlog, carat1.01, type="response")
+cat("Predicted log(price) of a diamond of carat 1.00 is", r1, "which translates to exp(", r1, ") =", exp(r1), "$\n")
+cat("Predicted log(price) of a diamond of carat 1.01 is", r2, "which translates to exp(", r2, ") =", exp(r2), "$\n")
+```
+
+
+### Conclusion
+
+#### Best fit model
+
+The best interaction model, `interlog`, is fitted for the log-transformed diamonds dataset. `diamonds_log`.</b>
+And the best high-order interaction model, `polyreducedintermodel` is fitted for the `diamonds` dataset, however the correlation between the various predictors and response variable `price` does not seem to be linear or satisfy the normality, linearity and homoscedasticity assumptions, therefore the model for the log transformed data is preferred for prediction because it performs better.</b>
+Our last model or Log-Interaction model also has the highest $R^2adj$ and lowest RMSE among other models which confirms that it is better than other models not only in terms of passing assumptions but also in terms of being a better predicting model.</b>
+So our best fit model is;</b>
+
+$$
+\widehat{Log(Price)}  = log(carat) + log(depth) + cut + color + clarity + log(carat)*depth + log(carat)*cut + log(carat)*color +\\ log(carat)*clarity + log(depth)*cut + log(depth)*color + log(depth)*clarity + cut*color + cut*clarity + color*clarity
+$$
+
+#### Interpret the effects of each independent variable
+
+Since our last model is the log-interaction model, we are going to interpret in terms of our reduced-interaction model.
+
+$$
+\widehat{Price} = -3503.06+2280.49*carat+117.45*depth + 662.47\ (when\ factor(cut)=Ideal)\\ -3783.48 (when\ factor(color)= D) -2789.50\ (when\ factor(clarity)=IF) -52.30*carat * depth \\+ carat * 442.67\ (when\ factor(cut)=Ideal) + carat * 1919.49 (when\ factor(color)=D)\\+carat *6750.50(when\ factor(clarity)=IF)+ depth*13.10(when\ factor(cut)=Ideal) + depth*-40.21(when\ factor(clarity)=IF)\\ + depth* 0.51(when\ factor(color)=D) + 331.31(when\ factor(cut)=Ideal and factor(color)=D)\\ + 1093.64(when\ factor(cut)=Ideal and factor(clarity)=IF) + 5551.7(when factor(color)=D and factor(clarity)=IF)  
+$$
+We assume all other variables to be held when we interpret each of them.
+
+Carat(quantitative): In addition to increasing the price of the diamond by 2280.49 dollars per carat, the carat quantitative variable also has interaction terms with depth, cut, color, and clarity. If we take for example the best possible values for each qualitative variable (i.e. cut = ideal, color = D, clarity = IF), we can see that the interaction terms contributes an additional 442.67 dollars per carat for ideal cut, 1919.49 dollars per carat for best colour, and 6750.50 dollars for best clarity. As well, the interaction term between carat and depth shows that there is a decrease in price of 52.30 dollars per carat per mm depth. 
+
+Depth(quantitative): In addition to increasing the price of the diamond by 117.45 dollars per mm depth, the depth quantitative variable also has interaction terms with carat, cut, color and clarity. If we take for example the best possible values for each qualitative variable (i.e. cut = ideal, color = D, clarity = IF), we can see that the interaction terms contributes an additional 13.10 dollars per mm depth for ideal cut, 0.51 dollars per mm depth for best colour, and -40.21 dollars per mm depth for best clarity. As well, the interaction term between carat and depth shows that there is a decrease in price of 52.30 dollars per carat per mm depth. 
+
+Cut(qualitative): As cut is a qualitative term, it provides a flat change to the value of the diamond of 662.47 dollars (for the best quality cut, other qualities will have different flat changes), along with having interaction terms with quantitative variables carat and depth (their effects with cut are described above), and qualitative variables clarity and colour. When the colour is the best quality, having the best quality cut increases the diamond's value by 331.31 dollars. When the clarity is the best quality, having the best quality cut increases the diamond's value by 1093.64 dollars.
+
+Color(qualitative): As colour is a qualitative term, it provides a flat change to the value of the diamond of -3783.48 dollars (for the best quality colour, other qualities will have different flat changes), along with having interaction terms with quantitative variables carat and depth (their effects with colour are described above), and qualitative variables clarity and cut. When the cut is the best quality, having the best quality colour increases the diamond's value by 331.31 dollars. When the clarity is the best quality, having the best quality colour increases the diamond's value by 5551.70 dollars.
+
+Clarity(qualitative): As clarity is a qualitative term, it provides a flat change to the value of the diamond of -2789.50 dollars (for the best quality clarity, other qualities will have different flag changes), along with having interaction terms with quantitative variables carat and depth (their effects with cut are described above), and qualitative variables cut and colour. When cut is the best quality, having the best quality clarity increases the diamond's value by 1093.64 dollars. When colour is the best quality, having the best clarity will increase the diamond's value by 5551.70 dollars.
+
+####  $R^2adj$ ,and RMSE
+
+Here we've brought all the values for $R^2adj$ ,and RMSE for our models to compare them we each other.</b>
+
+<b>First-order model:</b>
+RMSE: 1156 on 53919 degrees of freedom
+Adjusted R-squared:  0.916 
+p-value: < 0.00000000000000022</b>
+
+<b>Reduced-Interaction Model</b>:
+RMSE: 1002 on 53772 degrees of freedom
+Adjusted R-squared:  0.9369 
+p-value: < 0.00000000000000022</b>
+
+<b>High-order model:</b>
+RMSE: 664 on 53760 degrees of freedom
+Adjusted R-squared:  0.9723 
+p-value: < 0.00000000000000022</b>
+
+<b>Log-transformed Reduced-First-Order model:</b>
+RMSE: 0.1338 on 53921 degrees of freedom
+Adjusted R-squared:  0.9826 
+p-value: < 0.00000000000000022</b>
+
+<b>Log-transformed interaction model:</b>
+RMSE: 0.1239 on 53791 degrees of freedom
+Adjusted R-squared:  0.9851 
+p-value: < 0.00000000000000022</b>
+
+
+As we can see, each model has an improvement in terms of $R^2adj$ (increasing) and RMSE (decreasing) from its previous model until we reach the last model or our best-fitted model that also has passed the assumptions regarding normality, linearity, and homoscedasticity.
+
+$R^2adj$ shows how well our data points fall within the line of the regression equation. In our case, the best-fitted model has $R^2adj$ of 0.9851 which says that the price or our dependent variable variance is explained really good by our independent variables in the regression model.
+
+About RMSE in our best-fitted model (0.1239) which shows the differences between predicted values by our model and the values observed, Of-course the lower is the better and we can see the in the last two models where both are log-models, the interaction model got a lower RMSE that shows the prediction is closer to the observed values.
+
+#### Discussions
+
+In this project, we tried to fit the best possible model on our diamond dataset. We started with the first-order model and went on all the way to log models because we could not get a statistically proper model out of the non-log models. None of the models even the high-order model could be able to satisfy the linearity, normality and homoscedasticity assumptions but the interaction-log model, we also did not find any outliers in the dataset which influence our model.
+
+Since we've never improved a model to its log before, it was a little out of our comfort zone and also exiting but we are happy that we finally could get a proper model that can relly on for predicting the price of diamonds based on some statistically significant predictors.
+
+A possible improvement to our model, would be to investigate other concave transformation function apart from the log(), but indeed it does not seem easy to work with such a model. Although we should be aware that the $R^2adj$ we got in our best model is very high and that makes it harder to get a significantly better model over the one we already have.
+
+</b>
+
+
+
+
+
+
+
